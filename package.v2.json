@@ -1,0 +1,15 @@
+{
+  "CinemaTicketMonitor": {
+    "name": "院线开票监控",
+    "description": "电影院开票监控插件；0.1.0 用于验证插件加载及 MoviePilot 通知链。",
+    "labels": "工具,消息通知,电影",
+    "version": "0.1.0",
+    "icon": "cinematicketmonitor.png",
+    "author": "santaizi20",
+    "level": 1,
+    "history": {
+      "v0.1.0": "首次发布：完成 MoviePilot 插件加载及统一通知链测试。"
+    },
+    "system_version": ">=2.0.0,<3.0.0"
+  }
+}
