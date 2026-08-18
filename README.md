@@ -1,0 +1,1 @@
+# moviepilot_cinema_monitor_plugins
