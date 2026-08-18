@@ -1,40 +1,45 @@
 # moviepilot_cinema_monitor_plugins
 
-MoviePilot 院线开票监控插件仓库。
+MoviePilot「院线开票监控」插件仓库。
+
+## 当前版本
+
+- MoviePilot V3：`0.2.0`
+- MoviePilot V2：`0.1.0`（基础通知链验证版）
+
+## v0.2.0 功能
+
+- HTTP/HTTPS 数据源定时检查
+- JSON 路径提取
+- 开票/未开票关键字判断
+- 数据从空到非空自动判断开票
+- 状态变化微信通知（通过 MoviePilot → WxPusher）
+- 已开票后的场次变化提醒
+- 最近一次检查状态和响应预览
+- 立即检查一次
+- 测试通知
 
 ## 目录
 
 ```text
 .
 ├── icons/
-│   └── cinematicketmonitor.png
 ├── plugins.v2/
-│   └── cinematicketmonitor/
-│       ├── __init__.py
-│       └── README.md
 ├── plugins.v3/
-│   └── cinematicketmonitor/
-│       ├── __init__.py
-│       └── README.md
+├── tests/
 ├── package.v2.json
 ├── package.v3.json
 └── SHA256SUMS.txt
 ```
 
-## 版本说明
+## 更新方式
 
-- MoviePilot V3：读取 `package.v3.json` + `plugins.v3/`
-- MoviePilot V2：读取 `package.v2.json` + `plugins.v2/`
-- 插件版本：`0.1.0`
+解压覆盖仓库根目录后：
 
-## 第一次测试
+```bash
+git add .
+git commit -m "update CinemaTicketMonitor to v0.2.0"
+git push
+```
 
-安装“院线开票监控”后：
-
-1. 打开插件配置；
-2. 启用插件；
-3. 打开“保存后发送一次测试通知”；
-4. 保存；
-5. 确认 WxPusher 收到 `🎬 院线开票监控测试`。
-
-> 0.1.0 暂不采集猫眼/淘票票数据，只验证 MoviePilot 插件与通知链路。
+MoviePilot 刷新插件市场后应显示 `0.2.0` 更新。
