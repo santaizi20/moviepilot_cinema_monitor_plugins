@@ -3,14 +3,13 @@
     "name": "院线开票监控",
     "description": "监控指定影院电影新增排片，按场次 seqNo 精确比较并通过 MoviePilot/WxPusher 通知。",
     "labels": "工具,消息通知,电影",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "icon": "cinematicketmonitor.png",
     "author": "santaizi20",
     "level": 1,
     "history": {
-      "v0.3.0": "正式新增排片监控：影院级请求、多电影监控、seqNo 增量比较、首次基线、IMAX/杜比/普通过滤、Cron 扫描和可选场次取消提醒。",
-      "v0.2.0": "新增 HTTP/JSON 通用数据源监控能力。",
-      "v0.1.0": "首次发布：完成 MoviePilot 插件加载及统一通知链测试。"
+      "v0.3.1": "修复 MoviePilot 插件分身运行时报 CinemaTicketMonitor is not defined；定时任务 ID 增加分身/影院隔离。",
+      "v0.3.0": "影院级请求、多电影监控、seqNo 增量比较、首次基线、放映类型过滤、Cron 扫描。"
     }
   }
 }

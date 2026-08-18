@@ -13,23 +13,10 @@ from app.plugins import _PluginBase
 
 
 class CinemaTicketMonitor(_PluginBase):
-    """
-    院线开票监控 - MoviePilot V2
-
-    v0.3.0
-    - 按影院请求排片接口，一次请求可监控多部电影
-    - 使用 seqNo 识别具体场次
-    - 首次运行可只建立基线，不发送历史场次通知
-    - 后续仅在新增场次时通知
-    - 可选通知仍未开场却从接口消失的场次
-    - 支持不限 / IMAX / 杜比 / 普通厅过滤
-    - 扫描时间直接使用 Cron 配置，默认每 30 分钟
-    """
-
     plugin_name = "院线开票监控"
     plugin_desc = "监控指定影院电影新增排片，使用场次 seqNo 精确识别新增场次并通过 MoviePilot 通知。"
     plugin_icon = "cinematicketmonitor.png"
-    plugin_version = "0.3.0"
+    plugin_version = "0.3.1"
     plugin_author = "santaizi20"
     author_url = "https://github.com/santaizi20/moviepilot_cinema_monitor_plugins"
     plugin_config_prefix = "cinematicketmonitor_"
@@ -54,7 +41,6 @@ class CinemaTicketMonitor(_PluginBase):
     _buy_url = ""
 
     def init_plugin(self, config: dict = None):
-        """读取插件配置。"""
         config = config or {}
 
         self._enabled = bool(config.get("enabled", False))
@@ -64,10 +50,7 @@ class CinemaTicketMonitor(_PluginBase):
         self._onlyonce = bool(config.get("onlyonce", False))
         self._test_notify = bool(config.get("test_notify", False))
 
-        self._api_url = str(
-            config.get("api_url")
-            or "https://apis.netstart.cn/maoyan/cinema/shows"
-        ).strip()
+        self._api_url = str(config.get("api_url") or "https://apis.netstart.cn/maoyan/cinema/shows").strip()
         self._city_id = str(config.get("city_id") or "10").strip()
         self._cinema_id = str(config.get("cinema_id") or "25428").strip()
         self._cinema_name = str(config.get("cinema_name") or "").strip()
@@ -83,11 +66,8 @@ class CinemaTicketMonitor(_PluginBase):
 
         if self._test_notify:
             self.post_message(
-                title="🎬 院线开票监控 v0.3.0",
-                text=(
-                    "MoviePilot V2 插件已加载。\n"
-                    "通知链测试成功：MoviePilot → 已启用通知渠道。"
-                ),
+                title="🎬 院线开票监控 v0.3.1",
+                text="MoviePilot V2 插件已加载。\n通知链测试成功：MoviePilot → 已启用通知渠道。",
             )
             self._test_notify = False
             self._save_config()
@@ -102,14 +82,21 @@ class CinemaTicketMonitor(_PluginBase):
     def get_api(self) -> List[Dict[str, Any]]:
         return []
 
+    def _service_prefix(self) -> str:
+        # 分身加载后 class 名通常会变化；同时拼上影院 ID，避免不同分身任务 ID 冲突
+        cls_name = getattr(self.__class__, "__name__", "CinemaMonitor")
+        safe_cls = re.sub(r"[^0-9A-Za-z_]+", "_", cls_name)
+        safe_cinema = re.sub(r"[^0-9A-Za-z_]+", "_", self._cinema_id or "unknown")
+        return f"{safe_cls}.{safe_cinema}"
+
     def get_service(self) -> List[Dict[str, Any]]:
-        """注册 Cron 周期任务及一次性立即检查任务。"""
         services = []
+        prefix = self._service_prefix()
 
         if self._enabled and self._cron:
             try:
                 services.append({
-                    "id": "CinemaTicketMonitor.PeriodicCheck",
+                    "id": f"{prefix}.PeriodicCheck",
                     "name": "院线开票监控定时扫描",
                     "trigger": CronTrigger.from_crontab(self._cron),
                     "func": self.check_showtimes,
@@ -119,17 +106,15 @@ class CinemaTicketMonitor(_PluginBase):
                 self.save_data("last_result", {
                     "checked_at": self._now(),
                     "status": "ERROR",
-                    "message": "Cron 表达式无效：%s" % err,
+                    "message": f"Cron 表达式无效：{err}",
                     "details": [],
                 })
 
         if self._onlyonce:
             services.append({
-                "id": "CinemaTicketMonitor.OneShotCheck",
+                "id": f"{prefix}.OneShotCheck",
                 "name": "院线开票监控立即扫描",
-                "trigger": DateTrigger(
-                    run_date=datetime.now() + timedelta(seconds=3)
-                ),
+                "trigger": DateTrigger(run_date=datetime.now() + timedelta(seconds=3)),
                 "func": self.check_showtimes,
                 "kwargs": {"reset_onlyonce": True},
             })
@@ -137,7 +122,6 @@ class CinemaTicketMonitor(_PluginBase):
         return services
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        """MoviePilot V2 配置页。"""
         return [
             {
                 "component": "VForm",
@@ -147,11 +131,7 @@ class CinemaTicketMonitor(_PluginBase):
                         "props": {
                             "type": "info",
                             "variant": "tonal",
-                            "text": (
-                                "v0.3.0：按影院一次获取完整排片，"
-                                "使用 seqNo 精确比较新增场次。"
-                                "默认每 30 分钟扫描一次。"
-                            ),
+                            "text": "v0.3.1：新增 MoviePilot 分身兼容修复；按影院获取完整排片，使用 seqNo 精确比较新增场次。",
                         },
                     },
                     {
@@ -167,24 +147,14 @@ class CinemaTicketMonitor(_PluginBase):
                         "component": "VRow",
                         "content": [
                             self._switch("onlyonce", "保存后立即扫描", 4),
-                            self._switch("test_notify", "测试 v0.3.0 通知", 4),
-                            self._text(
-                                "cron",
-                                "扫描 Cron",
-                                "*/30 * * * *",
-                                4,
-                            ),
+                            self._switch("test_notify", "测试 v0.3.1 通知", 4),
+                            self._text("cron", "扫描 Cron", "*/30 * * * *", 4),
                         ],
                     },
                     {
                         "component": "VRow",
                         "content": [
-                            self._text(
-                                "api_url",
-                                "排片接口地址",
-                                "https://apis.netstart.cn/maoyan/cinema/shows",
-                                12,
-                            ),
+                            self._text("api_url", "排片接口地址", "https://apis.netstart.cn/maoyan/cinema/shows", 12),
                         ],
                     },
                     {
@@ -192,23 +162,13 @@ class CinemaTicketMonitor(_PluginBase):
                         "content": [
                             self._text("city_id", "城市 ID", "10", 3),
                             self._text("cinema_id", "影院 ID", "25428", 3),
-                            self._text(
-                                "cinema_name",
-                                "影院名称（可选）",
-                                "留空时使用接口返回名称",
-                                6,
-                            ),
+                            self._text("cinema_name", "影院名称（可选）", "留空时使用接口返回名称", 6),
                         ],
                     },
                     {
                         "component": "VRow",
                         "content": [
-                            self._text(
-                                "movie_names",
-                                "监控电影",
-                                "奥德赛；多部电影用逗号或换行分隔",
-                                8,
-                            ),
+                            self._text("movie_names", "监控电影", "奥德赛；多部电影用逗号或换行分隔", 8),
                             {
                                 "component": "VCol",
                                 "props": {"cols": 12, "md": 4},
@@ -226,18 +186,8 @@ class CinemaTicketMonitor(_PluginBase):
                     {
                         "component": "VRow",
                         "content": [
-                            self._text(
-                                "buy_url",
-                                "购票跳转地址（可选）",
-                                "收到通知时附带的购票页面地址",
-                                8,
-                            ),
-                            self._text(
-                                "timeout",
-                                "请求超时（秒）",
-                                "15",
-                                4,
-                            ),
+                            self._text("buy_url", "购票跳转地址（可选）", "收到通知时附带的购票页面地址", 8),
+                            self._text("timeout", "请求超时（秒）", "15", 4),
                         ],
                     },
                 ],
@@ -261,7 +211,6 @@ class CinemaTicketMonitor(_PluginBase):
         }
 
     def get_page(self) -> List[dict]:
-        """插件详情页展示最近一次扫描状态。"""
         result = self.get_data("last_result") or {}
 
         if not result:
@@ -270,10 +219,7 @@ class CinemaTicketMonitor(_PluginBase):
                 "props": {
                     "type": "info",
                     "variant": "tonal",
-                    "text": (
-                        "院线开票监控 v0.3.0 已加载。\n"
-                        "配置电影后，可勾选“保存后立即扫描”建立首次基线。"
-                    ),
+                    "text": "院线开票监控 v0.3.1 已加载。\n配置电影后，可勾选“保存后立即扫描”建立首次基线。",
                 },
             }]
 
@@ -286,7 +232,7 @@ class CinemaTicketMonitor(_PluginBase):
         }.get(status, "info")
 
         lines = [
-            "当前版本：0.3.0（MoviePilot V2）",
+            "当前版本：0.3.1（MoviePilot V2）",
             "最近扫描：%s" % result.get("checked_at", "-"),
             "影院：%s" % result.get("cinema_name", self._cinema_name or "-"),
             "状态：%s" % status,
@@ -306,11 +252,9 @@ class CinemaTicketMonitor(_PluginBase):
         }]
 
     def stop_service(self):
-        """本插件仅使用 MoviePilot 公共服务调度器。"""
         pass
 
     def check_showtimes(self, reset_onlyonce: bool = False):
-        """执行一次影院排片扫描。"""
         try:
             movie_names = self._parse_movie_names(self._movie_names)
             if not movie_names:
@@ -355,7 +299,6 @@ class CinemaTicketMonitor(_PluginBase):
             config_signature = self._config_signature(movie_names)
             state = self.get_data("movie_state") or {}
 
-            # 监控关键配置发生变化时，按新配置重新建立基线。
             if state.get("config_signature") != config_signature:
                 previous_movies = {}
                 config_changed = True
@@ -369,7 +312,6 @@ class CinemaTicketMonitor(_PluginBase):
             missing_names = []
             total_new = 0
             total_removed = 0
-            baseline_count = 0
 
             for configured_name in movie_names:
                 key = self._normalize_name(configured_name)
@@ -378,43 +320,26 @@ class CinemaTicketMonitor(_PluginBase):
                 if not movie:
                     missing_names.append(configured_name)
                     details.append("未找到：%s" % configured_name)
-                    # 临时未返回该电影时保留旧基线，不清空。
                     continue
 
                 found_count += 1
                 actual_movie_name = str(movie.get("nm") or configured_name)
-                sessions = self._extract_sessions(movie)
-                sessions = self._filter_sessions(sessions)
-
-                current = {
-                    session["key"]: session
-                    for session in sessions
-                }
+                sessions = self._filter_sessions(self._extract_sessions(movie))
+                current = {session["key"]: session for session in sessions}
 
                 old_entry = previous_movies.get(key)
-                old_sessions = (
-                    old_entry.get("sessions", {})
-                    if isinstance(old_entry, dict)
-                    else {}
-                )
-
+                old_sessions = old_entry.get("sessions", {}) if isinstance(old_entry, dict) else {}
                 first_for_movie = not bool(old_entry) or config_changed
 
                 if first_for_movie and self._baseline_first:
                     new_sessions = []
                     removed_sessions = []
-                    baseline_count += len(current)
-                    details.append(
-                        "%s：建立基线 %d 场"
-                        % (actual_movie_name, len(current))
-                    )
+                    details.append("%s：建立基线 %d 场" % (actual_movie_name, len(current)))
                 else:
                     new_keys = sorted(set(current) - set(old_sessions))
                     removed_keys = sorted(set(old_sessions) - set(current))
 
-                    new_sessions = [
-                        current[k] for k in new_keys
-                    ]
+                    new_sessions = [current[k] for k in new_keys]
                     removed_sessions = [
                         old_sessions[k]
                         for k in removed_keys
@@ -425,45 +350,27 @@ class CinemaTicketMonitor(_PluginBase):
                     total_removed += len(removed_sessions)
 
                     if new_sessions:
-                        details.append(
-                            "%s：新增 %d 场"
-                            % (actual_movie_name, len(new_sessions))
-                        )
+                        details.append("%s：新增 %d 场" % (actual_movie_name, len(new_sessions)))
                     elif not removed_sessions:
-                        details.append(
-                            "%s：无新增，共 %d 场"
-                            % (actual_movie_name, len(current))
-                        )
+                        details.append("%s：无新增，共 %d 场" % (actual_movie_name, len(current)))
 
                     if removed_sessions:
-                        details.append(
-                            "%s：取消/消失 %d 场"
-                            % (actual_movie_name, len(removed_sessions))
-                        )
+                        details.append("%s：取消/消失 %d 场" % (actual_movie_name, len(removed_sessions)))
 
-                # 新电影若关闭“首次仅建基线”，第一次看到的全部当前场次都作为新增。
                 if first_for_movie and not self._baseline_first:
                     new_sessions = list(current.values())
                     removed_sessions = []
                     total_new += len(new_sessions)
-                    details.append(
-                        "%s：首次发现 %d 场"
-                        % (actual_movie_name, len(new_sessions))
-                    )
+                    details.append("%s：首次发现 %d 场" % (actual_movie_name, len(new_sessions)))
 
                 if self._notify_new and new_sessions:
                     self._notify_new_sessions(
-                        actual_movie_name,
-                        actual_cinema_name,
-                        new_sessions,
-                        old_sessions,
+                        actual_movie_name, actual_cinema_name, new_sessions, old_sessions
                     )
 
                 if self._notify_removed and removed_sessions:
                     self._notify_removed_sessions(
-                        actual_movie_name,
-                        actual_cinema_name,
-                        removed_sessions,
+                        actual_movie_name, actual_cinema_name, removed_sessions
                     )
 
                 next_movies[key] = {
@@ -490,10 +397,7 @@ class CinemaTicketMonitor(_PluginBase):
                 message = "已按当前配置建立新基线"
             elif total_new or total_removed:
                 status = "OK"
-                message = "新增 %d 场，取消/消失 %d 场" % (
-                    total_new,
-                    total_removed,
-                )
+                message = "新增 %d 场，取消/消失 %d 场" % (total_new, total_removed)
             elif missing_names:
                 status = "PARTIAL"
                 message = "扫描完成，部分电影未找到"
@@ -523,7 +427,6 @@ class CinemaTicketMonitor(_PluginBase):
                 self._save_config()
 
     def _fetch_cinema_showtimes(self) -> Dict[str, Any]:
-        """一次请求获取整个影院当前开放的排片。"""
         params = {
             "cinemaId": self._cinema_id,
             "ci": self._city_id,
@@ -535,7 +438,7 @@ class CinemaTicketMonitor(_PluginBase):
         request = Request(
             url,
             headers={
-                "User-Agent": "MoviePilot-CinemaTicketMonitor/0.3.0",
+                "User-Agent": "MoviePilot-CinemaTicketMonitor/0.3.1",
                 "Accept": "application/json,text/plain,*/*",
             },
             method="GET",
@@ -548,13 +451,11 @@ class CinemaTicketMonitor(_PluginBase):
         return json.loads(body.decode(charset, errors="replace"))
 
     def _extract_sessions(self, movie: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """从 movie.shows[].plist[] 提取具体场次。"""
         result = []
 
         for show in movie.get("shows") or []:
             if not isinstance(show, dict):
                 continue
-
             show_date = str(show.get("showDate") or "")
 
             for item in show.get("plist") or []:
@@ -568,20 +469,11 @@ class CinemaTicketMonitor(_PluginBase):
                 show_type = str(item.get("tp") or "").strip()
                 lang = str(item.get("lang") or "").strip()
 
-                # seqNo 为首选唯一标识；极端情况下缺失则使用关键字段生成备用 ID。
                 if seq_no:
                     key = seq_no
                 else:
-                    fallback = "|".join([
-                        dt,
-                        tm,
-                        hall,
-                        show_type,
-                        lang,
-                    ])
-                    key = "fallback-" + hashlib.sha1(
-                        fallback.encode("utf-8")
-                    ).hexdigest()
+                    fallback = "|".join([dt, tm, hall, show_type, lang])
+                    key = "fallback-" + hashlib.sha1(fallback.encode("utf-8")).hexdigest()
 
                 result.append({
                     "key": key,
@@ -595,18 +487,9 @@ class CinemaTicketMonitor(_PluginBase):
                     "vipPrice": str(item.get("vipPrice") or ""),
                 })
 
-        # 按唯一 key 去重
-        unique = {}
-        for session in result:
-            unique[session["key"]] = session
+        return list({session["key"]: session for session in result}.values())
 
-        return list(unique.values())
-
-    def _filter_sessions(
-        self,
-        sessions: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """按配置的放映类型过滤。"""
+    def _filter_sessions(self, sessions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         filter_type = (self._show_type or "不限").strip().lower()
 
         if filter_type in ("", "不限"):
@@ -615,11 +498,8 @@ class CinemaTicketMonitor(_PluginBase):
         result = []
         for session in sessions:
             text = (
-                str(session.get("tp") or "")
-                + " "
-                + str(session.get("th") or "")
+                str(session.get("tp") or "") + " " + str(session.get("th") or "")
             ).lower()
-
             is_imax = "imax" in text
             is_dolby = "杜比" in text or "dolby" in text
 
@@ -639,41 +519,27 @@ class CinemaTicketMonitor(_PluginBase):
         sessions: List[Dict[str, Any]],
         old_sessions: Dict[str, Dict[str, Any]],
     ):
-        """按日期分组发送新增排片通知。"""
         sessions = sorted(
             sessions,
-            key=lambda x: (
-                x.get("dt", ""),
-                x.get("tm", ""),
-                x.get("th", ""),
-            ),
+            key=lambda x: (x.get("dt", ""), x.get("tm", ""), x.get("th", "")),
         )
 
-        old_dates = {
-            str(item.get("dt") or "")
-            for item in old_sessions.values()
-        }
-
+        old_dates = {str(item.get("dt") or "") for item in old_sessions.values()}
         grouped = {}
         for session in sessions:
-            grouped.setdefault(
-                session.get("dt") or "日期未知",
-                []
-            ).append(session)
+            grouped.setdefault(session.get("dt") or "日期未知", []).append(session)
 
         lines = ["影院：%s" % cinema_name]
 
         for date_key in sorted(grouped):
+            lines.append("")
             if date_key not in old_dates:
-                lines.append("")
                 lines.append("🆕 新增排片日期：%s" % date_key)
             else:
-                lines.append("")
                 lines.append("日期：%s" % date_key)
 
             for session in grouped[date_key]:
-                desc = self._session_line(session)
-                lines.append(desc)
+                lines.append(self._session_line(session))
 
         lines.append("")
         lines.append("共新增 %d 场" % len(sessions))
@@ -692,14 +558,9 @@ class CinemaTicketMonitor(_PluginBase):
         cinema_name: str,
         sessions: List[Dict[str, Any]],
     ):
-        """发送仍未开场但从接口中消失的场次提醒。"""
         sessions = sorted(
             sessions,
-            key=lambda x: (
-                x.get("dt", ""),
-                x.get("tm", ""),
-                x.get("th", ""),
-            ),
+            key=lambda x: (x.get("dt", ""), x.get("tm", ""), x.get("th", "")),
         )
 
         lines = [
@@ -721,7 +582,6 @@ class CinemaTicketMonitor(_PluginBase):
 
     @staticmethod
     def _session_line(session: Dict[str, Any]) -> str:
-        """格式化一条场次信息。"""
         time_text = str(session.get("tm") or "--:--")
         type_text = str(session.get("tp") or "").strip()
         hall_text = str(session.get("th") or "").strip()
@@ -737,9 +597,9 @@ class CinemaTicketMonitor(_PluginBase):
 
         return "  " + " | ".join(parts)
 
-    @staticmethod
-    def _parse_movie_names(value: str) -> List[str]:
-        """逗号、中文逗号、分号、换行均可分隔多部电影。"""
+    @classmethod
+    def _parse_movie_names(cls, value: str) -> List[str]:
+        # v0.3.1：不再写死 CinemaTicketMonitor 类名，兼容 MoviePilot 插件分身
         if not value:
             return []
 
@@ -751,7 +611,7 @@ class CinemaTicketMonitor(_PluginBase):
             name = name.strip()
             if not name:
                 continue
-            normalized = CinemaTicketMonitor._normalize_name(name)
+            normalized = cls._normalize_name(name)
             if normalized in seen:
                 continue
             seen.add(normalized)
@@ -764,28 +624,18 @@ class CinemaTicketMonitor(_PluginBase):
         return re.sub(r"\s+", "", str(name or "")).lower()
 
     def _config_signature(self, movie_names: List[str]) -> str:
-        """关键监控配置变化时自动重建基线。"""
         raw = json.dumps({
             "api_url": self._api_url,
             "city_id": self._city_id,
             "cinema_id": self._cinema_id,
-            "movie_names": [
-                self._normalize_name(x)
-                for x in movie_names
-            ],
+            "movie_names": [self._normalize_name(x) for x in movie_names],
             "show_type": self._show_type,
         }, ensure_ascii=False, sort_keys=True)
 
-        return hashlib.sha256(
-            raw.encode("utf-8")
-        ).hexdigest()
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _should_notify_removed(session: Dict[str, Any]) -> bool:
-        """
-        仅对仍未开场的场次发送“取消/消失”提醒，
-        避免正常过期的历史场次被误报为取消。
-        """
         dt = str(session.get("dt") or "").strip()
         tm = str(session.get("tm") or "").strip()
 
@@ -794,15 +644,9 @@ class CinemaTicketMonitor(_PluginBase):
 
         try:
             if tm:
-                session_time = datetime.strptime(
-                    dt + " " + tm,
-                    "%Y-%m-%d %H:%M",
-                )
+                session_time = datetime.strptime(dt + " " + tm, "%Y-%m-%d %H:%M")
             else:
-                session_time = datetime.strptime(
-                    dt,
-                    "%Y-%m-%d",
-                ) + timedelta(days=1)
+                session_time = datetime.strptime(dt, "%Y-%m-%d") + timedelta(days=1)
 
             return session_time > datetime.now()
         except Exception:
@@ -834,20 +678,12 @@ class CinemaTicketMonitor(_PluginBase):
             "props": {"cols": 12, "md": md},
             "content": [{
                 "component": "VSwitch",
-                "props": {
-                    "model": model,
-                    "label": label,
-                },
+                "props": {"model": model, "label": label},
             }],
         }
 
     @staticmethod
-    def _text(
-        model: str,
-        label: str,
-        placeholder: str,
-        md: int
-    ) -> dict:
+    def _text(model: str, label: str, placeholder: str, md: int) -> dict:
         return {
             "component": "VCol",
             "props": {"cols": 12, "md": md},
