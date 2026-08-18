@@ -12,18 +12,19 @@ from app.plugins import _PluginBase
 
 class CinemaTicketMonitor(_PluginBase):
     """
-    院线开票监控。
+    院线开票监控 - MoviePilot V2
 
     v0.2.0:
-    - 支持定时请求用户配置的 HTTP/HTTPS 数据源；
-    - 支持普通文本/HTML 与 JSON 路径两种判断方式；
-    - 检测 WAITING -> OPEN 状态变化；
-    - 可选在已开票状态下内容变化时再次提醒；
-    - 通知继续走 MoviePilot 统一 post_message() 链路。
+    - 定时检查 HTTP/HTTPS 数据源
+    - 支持 JSON 路径提取
+    - 支持开票/未开票关键字
+    - WAITING -> OPEN 时通知
+    - OPEN 后内容变化可再次通知
+    - 继续使用 MoviePilot post_message()，由 WxPusher 等通知渠道转发
     """
 
     plugin_name = "院线开票监控"
-    plugin_desc = "监控授权的影院/票务数据源，发现开票或场次变化后通过 MoviePilot 通知。"
+    plugin_desc = "监控影院/票务 HTTP 或 JSON 数据源，发现开票或场次变化后通过 MoviePilot 通知。"
     plugin_icon = "cinematicketmonitor.png"
     plugin_version = "0.2.0"
     plugin_author = "santaizi20"
@@ -32,27 +33,27 @@ class CinemaTicketMonitor(_PluginBase):
     plugin_order = 30
     auth_level = 1
 
-    _enabled: bool = False
-    _notify: bool = True
-    _notify_changes: bool = True
-    _onlyonce: bool = False
-    _test_notify: bool = False
+    _enabled = False
+    _notify = True
+    _notify_changes = True
+    _onlyonce = False
+    _test_notify = False
 
-    _cron: str = "*/5 * * * *"
-    _source_url: str = ""
-    _headers_json: str = ""
-    _json_path: str = ""
-    _open_keywords: str = ""
-    _closed_keywords: str = ""
-    _timeout: int = 15
+    _cron = "*/5 * * * *"
+    _source_url = ""
+    _headers_json = ""
+    _json_path = ""
+    _open_keywords = ""
+    _closed_keywords = ""
+    _timeout = 15
 
-    _movie_name: str = ""
-    _cinema_name: str = ""
-    _date_label: str = ""
-    _buy_url: str = ""
+    _movie_name = ""
+    _cinema_name = ""
+    _date_label = ""
+    _buy_url = ""
 
-    def init_plugin(self, config: Optional[dict] = None) -> None:
-        """读取插件配置。"""
+    def init_plugin(self, config: dict = None):
+        """读取并应用插件配置。"""
         config = config or {}
 
         self._enabled = bool(config.get("enabled", False))
@@ -80,28 +81,28 @@ class CinemaTicketMonitor(_PluginBase):
 
         if self._test_notify:
             self.post_message(
-                title="🎬 院线开票监控测试",
-                text="v0.2.0 通知链正常：MoviePilot → 已启用通知渠道。"
+                title="🎬 院线开票监控 v0.2.0",
+                text="MoviePilot V2 插件升级成功，通知链正常。"
             )
             self._test_notify = False
             self._save_config()
 
     def get_state(self) -> bool:
-        """返回插件启用状态。"""
+        """返回启用状态。"""
         return self._enabled
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
-        """当前版本不注册远程命令。"""
+        """当前版本无远程命令。"""
         return []
 
     def get_api(self) -> List[Dict[str, Any]]:
-        """当前版本不注册额外 API。"""
+        """当前版本无额外 API。"""
         return []
 
     def get_service(self) -> List[Dict[str, Any]]:
-        """注册定时监控及一次性检查任务。"""
-        services: List[Dict[str, Any]] = []
+        """注册周期检查和一次性立即检查服务。"""
+        services = []
 
         if self._enabled and self._cron:
             try:
@@ -112,12 +113,12 @@ class CinemaTicketMonitor(_PluginBase):
                     "func": self.check_source,
                     "kwargs": {},
                 })
-            except Exception:
-                # Cron 配置错误时不阻塞插件加载，错误会显示在详情页。
+            except Exception as err:
                 self.save_data("last_result", {
                     "checked_at": self._now(),
                     "status": "ERROR",
-                    "message": f"Cron 表达式无效：{self._cron}",
+                    "message": "Cron 表达式无效：%s" % err,
+                    "preview": "",
                 })
 
         if self._onlyonce:
@@ -132,7 +133,7 @@ class CinemaTicketMonitor(_PluginBase):
         return services
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        """返回配置表单与默认配置。"""
+        """返回 V2 Vuetify 配置页面。"""
         return [
             {
                 "component": "VForm",
@@ -143,8 +144,8 @@ class CinemaTicketMonitor(_PluginBase):
                             "type": "info",
                             "variant": "tonal",
                             "text": (
-                                "v0.2.0 已支持真实 HTTP/JSON 数据源监控。"
-                                "请仅填写你有权访问和自动查询的数据源。"
+                                "v0.2.0（MoviePilot V2）：已支持 HTTP/JSON 数据源定时监控。"
+                                "请仅使用你有权自动访问的数据源。"
                             ),
                         },
                     },
@@ -153,14 +154,14 @@ class CinemaTicketMonitor(_PluginBase):
                         "content": [
                             self._switch("enabled", "启用插件", 3),
                             self._switch("notify", "开票时通知", 3),
-                            self._switch("notify_changes", "开票后内容变化也通知", 3),
-                            self._switch("onlyonce", "保存后立即检查一次", 3),
+                            self._switch("notify_changes", "场次变化也通知", 3),
+                            self._switch("onlyonce", "保存后立即检查", 3),
                         ],
                     },
                     {
                         "component": "VRow",
                         "content": [
-                            self._switch("test_notify", "保存后测试通知", 4),
+                            self._switch("test_notify", "测试 v0.2.0 通知", 4),
                             self._text("cron", "检查周期（Cron）", "*/5 * * * *", 4),
                             self._text("timeout", "请求超时（秒）", "15", 4),
                         ],
@@ -201,7 +202,7 @@ class CinemaTicketMonitor(_PluginBase):
                             self._text(
                                 "json_path",
                                 "JSON 路径（可选）",
-                                "例如 data.showtimes；留空则检查完整响应文本",
+                                "例如：data.showtimes；留空则判断完整响应",
                                 12,
                             ),
                         ],
@@ -212,13 +213,13 @@ class CinemaTicketMonitor(_PluginBase):
                             self._text(
                                 "open_keywords",
                                 "开票关键字（可选，英文逗号分隔）",
-                                "例如 可购票,选座；留空时 JSON 非空即视为开票",
+                                "例如：可购票,选座",
                                 6,
                             ),
                             self._text(
                                 "closed_keywords",
                                 "未开票关键字（可选，英文逗号分隔）",
-                                "例如 暂无场次,敬请期待",
+                                "例如：暂无场次,敬请期待",
                                 6,
                             ),
                         ],
@@ -229,7 +230,7 @@ class CinemaTicketMonitor(_PluginBase):
                             self._text(
                                 "buy_url",
                                 "购票跳转 URL（可选）",
-                                "通知中附带的购票页面地址",
+                                "收到通知时附带的购票地址",
                                 12,
                             ),
                         ],
@@ -256,52 +257,52 @@ class CinemaTicketMonitor(_PluginBase):
         }
 
     def get_page(self) -> List[dict]:
-        """显示最近一次监控结果。"""
+        """显示最近检查结果。"""
         result = self.get_data("last_result") or {}
+
         if not result:
-            return [{
-                "component": "VAlert",
-                "props": {
-                    "type": "info",
-                    "variant": "tonal",
-                    "text": "尚未执行监控。配置数据源后勾选“保存后立即检查一次”。",
-                },
-            }]
+            text = (
+                "院线开票监控 v0.2.0 已加载。\n"
+                "尚未执行数据源检查，可在配置页勾选“保存后立即检查”。"
+            )
+            alert_type = "info"
+        else:
+            status = result.get("status", "UNKNOWN")
+            alert_type = {
+                "OPEN": "success",
+                "WAITING": "info",
+                "UNKNOWN": "warning",
+                "ERROR": "error",
+            }.get(status, "info")
 
-        status = result.get("status", "UNKNOWN")
-        alert_type = {
-            "OPEN": "success",
-            "WAITING": "info",
-            "UNKNOWN": "warning",
-            "ERROR": "error",
-        }.get(status, "info")
-
-        lines = [
-            f"最近检查：{result.get('checked_at', '-')}",
-            f"状态：{status}",
-            f"电影：{self._movie_name or '-'}",
-            f"影院：{self._cinema_name or '-'}",
-            f"日期：{self._date_label or '-'}",
-            f"摘要：{result.get('message', '-')}",
-        ]
-        if result.get("preview"):
-            lines.append(f"响应预览：{result.get('preview')}")
+            lines = [
+                "当前版本：0.2.0（MoviePilot V2）",
+                "最近检查：%s" % result.get("checked_at", "-"),
+                "状态：%s" % status,
+                "电影：%s" % (self._movie_name or "-"),
+                "影院：%s" % (self._cinema_name or "-"),
+                "日期：%s" % (self._date_label or "-"),
+                "摘要：%s" % result.get("message", "-"),
+            ]
+            if result.get("preview"):
+                lines.append("响应预览：%s" % result.get("preview"))
+            text = "\n".join(lines)
 
         return [{
             "component": "VAlert",
             "props": {
                 "type": alert_type,
                 "variant": "tonal",
-                "text": "\n".join(lines),
+                "text": text,
             },
         }]
 
-    def stop_service(self) -> None:
-        """本插件只使用 MoviePilot 宿主调度器，无额外后台资源。"""
-        return
+    def stop_service(self):
+        """仅使用宿主公共服务调度器，无自行创建的资源需要释放。"""
+        pass
 
-    def check_source(self, reset_onlyonce: bool = False) -> None:
-        """执行一次数据源检查并判断是否开票。"""
+    def check_source(self, reset_onlyonce: bool = False):
+        """执行一次数据源检查。"""
         try:
             if not self._source_url:
                 raise ValueError("未配置数据源 URL")
@@ -319,33 +320,36 @@ class CinemaTicketMonitor(_PluginBase):
             previous_status = previous.get("status")
             previous_hash = previous.get("hash")
 
-            changed = bool(previous_hash and previous_hash != current_hash)
-            first_seen_open = status == "OPEN" and previous_status != "OPEN"
-            changed_while_open = (
+            content_changed = bool(
+                previous_hash and previous_hash != current_hash
+            )
+            first_open = status == "OPEN" and previous_status != "OPEN"
+            open_changed = (
                 status == "OPEN"
                 and previous_status == "OPEN"
-                and changed
+                and content_changed
                 and self._notify_changes
             )
 
+            checked_at = self._now()
             self.save_data("monitor_state", {
                 "status": status,
                 "hash": current_hash,
-                "checked_at": self._now(),
+                "checked_at": checked_at,
             })
 
             preview = self._preview(canonical)
             self.save_data("last_result", {
-                "checked_at": self._now(),
+                "checked_at": checked_at,
                 "status": status,
                 "message": reason,
                 "preview": preview,
             })
 
-            if self._notify and (first_seen_open or changed_while_open):
-                self._send_open_notice(
+            if self._notify and (first_open or open_changed):
+                self._send_notice(
                     reason=reason,
-                    changed=changed_while_open,
+                    changed=open_changed,
                     preview=preview,
                 )
 
@@ -361,8 +365,8 @@ class CinemaTicketMonitor(_PluginBase):
                 self._onlyonce = False
                 self._save_config()
 
-    def _fetch_source(self) -> Tuple[str, Any]:
-        """请求数据源；返回原始文本及可选 JSON 对象。"""
+    def _fetch_source(self):
+        """GET 请求数据源。"""
         headers = {
             "User-Agent": "MoviePilot-CinemaTicketMonitor/0.2.0",
             "Accept": "application/json,text/plain,text/html,*/*",
@@ -375,18 +379,13 @@ class CinemaTicketMonitor(_PluginBase):
             for key, value in extra.items():
                 headers[str(key)] = str(value)
 
-        request = Request(
-            self._source_url,
-            headers=headers,
-            method="GET",
-        )
+        request = Request(self._source_url, headers=headers, method="GET")
         with urlopen(request, timeout=self._timeout) as response:
             body = response.read()
             charset = response.headers.get_content_charset() or "utf-8"
 
         raw_text = body.decode(charset, errors="replace")
 
-        parsed_json = None
         try:
             parsed_json = json.loads(raw_text)
         except Exception:
@@ -394,83 +393,89 @@ class CinemaTicketMonitor(_PluginBase):
 
         return raw_text, parsed_json
 
-    def _resolve_target(self, raw_text: str, parsed_json: Any) -> Any:
-        """如配置 JSON 路径则提取对应字段，否则返回完整响应。"""
+    def _resolve_target(self, raw_text: str, parsed_json: Any):
+        """按 dot-path 提取 JSON 节点。"""
         if not self._json_path:
             return parsed_json if parsed_json is not None else raw_text
 
         if parsed_json is None:
-            raise ValueError("已配置 JSON 路径，但数据源返回不是有效 JSON")
+            raise ValueError("已配置 JSON 路径，但返回内容不是有效 JSON")
 
         current = parsed_json
-        for part in [x.strip() for x in self._json_path.split(".") if x.strip()]:
+        parts = [x.strip() for x in self._json_path.split(".") if x.strip()]
+
+        for part in parts:
             if isinstance(current, dict):
                 if part not in current:
-                    raise KeyError(f"JSON 路径不存在：{self._json_path}")
+                    raise KeyError("JSON 路径不存在：%s" % self._json_path)
                 current = current[part]
             elif isinstance(current, list) and part.isdigit():
                 index = int(part)
                 if index >= len(current):
-                    raise IndexError(f"JSON 数组索引越界：{part}")
+                    raise IndexError("JSON 数组索引越界：%s" % part)
                 current = current[index]
             else:
-                raise KeyError(f"无法继续解析 JSON 路径：{self._json_path}")
+                raise KeyError("无法继续解析 JSON 路径：%s" % self._json_path)
 
         return current
 
-    def _judge_status(self, target: Any) -> Tuple[str, str]:
-        """根据关键字或非空规则判断 OPEN / WAITING / UNKNOWN。"""
+    def _judge_status(self, target: Any):
+        """判断目标内容当前是否代表开票。"""
         canonical = self._canonical_text(target)
-        lower = canonical.lower()
+        lower_text = canonical.lower()
 
         open_keywords = self._split_keywords(self._open_keywords)
         closed_keywords = self._split_keywords(self._closed_keywords)
 
-        open_hits = [kw for kw in open_keywords if kw.lower() in lower]
-        closed_hits = [kw for kw in closed_keywords if kw.lower() in lower]
+        open_hits = [
+            kw for kw in open_keywords if kw.lower() in lower_text
+        ]
+        closed_hits = [
+            kw for kw in closed_keywords if kw.lower() in lower_text
+        ]
 
         if open_keywords:
             if open_hits:
-                return "OPEN", f"命中开票关键字：{', '.join(open_hits)}"
+                return "OPEN", "命中开票关键字：%s" % ", ".join(open_hits)
             if closed_hits:
-                return "WAITING", f"命中未开票关键字：{', '.join(closed_hits)}"
+                return "WAITING", "命中未开票关键字：%s" % ", ".join(closed_hits)
             return "UNKNOWN", "未命中任何开票/未开票关键字"
 
-        # 未配置开票关键字时，JSON/文本目标非空即视为 OPEN。
+        if closed_hits:
+            return "WAITING", "命中未开票关键字：%s" % ", ".join(closed_hits)
+
         if self._is_nonempty(target):
-            if closed_hits:
-                return "WAITING", f"命中未开票关键字：{', '.join(closed_hits)}"
             return "OPEN", "目标数据非空"
 
         return "WAITING", "目标数据为空"
 
-    def _send_open_notice(self, reason: str, changed: bool, preview: str) -> None:
-        """发送开票/场次变化通知。"""
+    def _send_notice(self, reason: str, changed: bool, preview: str):
+        """通过 MoviePilot 统一通知链发消息。"""
         title = "🎟️ 场次更新提醒" if changed else "🎬 开票提醒"
         lines = []
 
         if self._movie_name:
-            lines.append(f"电影：{self._movie_name}")
+            lines.append("电影：%s" % self._movie_name)
         if self._cinema_name:
-            lines.append(f"影院：{self._cinema_name}")
+            lines.append("影院：%s" % self._cinema_name)
         if self._date_label:
-            lines.append(f"日期：{self._date_label}")
+            lines.append("日期：%s" % self._date_label)
 
-        lines.append(f"状态：{reason}")
+        lines.append("状态：%s" % reason)
 
         if preview:
-            lines.append(f"数据：{preview}")
+            lines.append("数据：%s" % preview)
 
         if self._buy_url:
-            lines.append(f"购票：{self._buy_url}")
+            lines.append("购票：%s" % self._buy_url)
 
         self.post_message(
             title=title,
             text="\n".join(lines),
         )
 
-    def _save_config(self) -> bool:
-        """保存当前配置。"""
+    def _save_config(self):
+        """保存插件配置。"""
         return self.update_config({
             "enabled": self._enabled,
             "notify": self._notify,
@@ -497,7 +502,10 @@ class CinemaTicketMonitor(_PluginBase):
             "props": {"cols": 12, "md": md},
             "content": [{
                 "component": "VSwitch",
-                "props": {"model": model, "label": label},
+                "props": {
+                    "model": model,
+                    "label": label,
+                },
             }],
         }
 
@@ -517,7 +525,7 @@ class CinemaTicketMonitor(_PluginBase):
         }
 
     @staticmethod
-    def _split_keywords(value: str) -> List[str]:
+    def _split_keywords(value: str):
         return [x.strip() for x in value.split(",") if x.strip()]
 
     @staticmethod

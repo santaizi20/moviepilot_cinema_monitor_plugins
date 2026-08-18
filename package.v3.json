@@ -1,7 +1,7 @@
 {
   "CinemaTicketMonitor": {
     "name": "院线开票监控",
-    "description": "监控授权的影院/票务 HTTP/JSON 数据源，发现开票或场次变化后通过 MoviePilot 通知。",
+    "description": "监控影院/票务 HTTP 或 JSON 数据源，发现开票或场次变化后通过 MoviePilot 通知。",
     "labels": "工具,消息通知,电影",
     "version": "0.2.0",
     "icon": "cinematicketmonitor.png",
@@ -9,7 +9,7 @@
     "level": 1,
     "system_version": ">=3.0.0",
     "history": {
-      "v0.2.0": "新增 HTTP/JSON 数据源定时监控、开票状态变化判断、场次变化提醒和最近检查状态。",
+      "v0.2.0": "新增 HTTP/JSON 数据源定时监控、开票状态变化判断和场次变化提醒。",
       "v0.1.0": "首次发布：完成 MoviePilot 插件加载及统一通知链测试。"
     }
   }
